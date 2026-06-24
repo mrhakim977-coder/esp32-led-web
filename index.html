@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ESP32 LED Steuerung</title>
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -19,11 +20,21 @@
     }
 
     h1 {
-      margin-bottom: 30px;
+      margin-bottom: 10px;
       font-size: 1.5rem;
       letter-spacing: 2px;
       opacity: 0.8;
     }
+
+    #mqttStatus {
+      margin-bottom: 20px;
+      font-size: 0.8rem;
+      padding: 4px 12px;
+      border-radius: 20px;
+      background: rgba(255,255,255,0.1);
+    }
+    #mqttStatus.connected { background: rgba(0,200,100,0.3); color: #00ff88; }
+    #mqttStatus.error     { background: rgba(255,50,50,0.3);  color: #ff6666; }
 
     #colorWheel {
       cursor: crosshair;
@@ -37,7 +48,6 @@
       height: 100px;
       border-radius: 50%;
       background: #ffffff;
-      box-shadow: 0 0 30px currentColor;
       transition: background 0.2s;
       border: 3px solid rgba(255,255,255,0.2);
     }
@@ -50,7 +60,7 @@
     }
 
     #status {
-      margin-top: 20px;
+      margin-top: 10px;
       font-size: 0.85rem;
       opacity: 0.5;
     }
@@ -59,6 +69,7 @@
 <body>
 
   <h1>ESP32-C6 LED Farbe</h1>
+  <div id="mqttStatus">Verbinde...</div>
 
   <canvas id="colorWheel" width="300" height="300"></canvas>
 
@@ -67,6 +78,44 @@
   <div id="status">Farbe wählen...</div>
 
   <script>
+    // ── MQTT Konfiguration ──────────────────────────────────────
+    const BROKER   = "48aa8a4f70f047eabee7041f11e22ee8.s1.eu.hivemq.cloud";
+    const PORT     = 8884;
+    const USER     = "esp32";
+    const PASS     = "Esp32Haupt!";
+    const TOPIC    = "esp32/led/color";
+    // ────────────────────────────────────────────────────────────
+
+    const mqttStatus = document.getElementById('mqttStatus');
+
+    const client = mqtt.connect(`wss://${BROKER}:${PORT}/mqtt`, {
+      username: USER,
+      password: PASS,
+      clientId: "web_" + Math.random().toString(16).substring(2, 8)
+    });
+
+    client.on('connect', () => {
+      mqttStatus.textContent = "Verbunden";
+      mqttStatus.className = "connected";
+    });
+
+    client.on('error', (err) => {
+      mqttStatus.textContent = "Fehler: " + err.message;
+      mqttStatus.className = "error";
+    });
+
+    client.on('close', () => {
+      mqttStatus.textContent = "Getrennt";
+      mqttStatus.className = "";
+    });
+
+    function sendColor(r, g, b) {
+      if (!client.connected) return;
+      const payload = JSON.stringify({ r, g, b });
+      client.publish(TOPIC, payload);
+    }
+
+    // ── Farbrad ─────────────────────────────────────────────────
     const canvas = document.getElementById('colorWheel');
     const ctx = canvas.getContext('2d');
     const preview = document.getElementById('preview');
@@ -78,48 +127,35 @@
     const cy = size / 2;
     const radius = size / 2 - 5;
 
-    // Farbrad zeichnen
     function drawWheel() {
       for (let angle = 0; angle < 360; angle++) {
         const startAngle = (angle - 1) * Math.PI / 180;
-        const endAngle = (angle + 1) * Math.PI / 180;
-
-        for (let r = 0; r < radius; r++) {
-          const saturation = r / radius * 100;
-          const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
-          gradient.addColorStop(0, `hsl(${angle}, 0%, 100%)`);
-          gradient.addColorStop(1, `hsl(${angle}, 100%, 50%)`);
-
-          ctx.beginPath();
-          ctx.moveTo(cx, cy);
-          ctx.arc(cx, cy, radius, startAngle, endAngle);
-          ctx.closePath();
-          ctx.fillStyle = gradient;
-          ctx.fill();
-        }
+        const endAngle   = (angle + 1) * Math.PI / 180;
+        const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+        gradient.addColorStop(0, `hsl(${angle}, 0%, 100%)`);
+        gradient.addColorStop(1, `hsl(${angle}, 100%, 50%)`);
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, radius, startAngle, endAngle);
+        ctx.closePath();
+        ctx.fillStyle = gradient;
+        ctx.fill();
       }
-
-      // Schwarzer Rand innen für Dunkelheit
-      const darkGradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
-      darkGradient.addColorStop(0, 'rgba(0,0,0,0)');
-      darkGradient.addColorStop(0.7, 'rgba(0,0,0,0)');
-      darkGradient.addColorStop(1, 'rgba(0,0,0,0.3)');
+      const dark = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+      dark.addColorStop(0,   'rgba(0,0,0,0)');
+      dark.addColorStop(0.7, 'rgba(0,0,0,0)');
+      dark.addColorStop(1,   'rgba(0,0,0,0.3)');
       ctx.beginPath();
       ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-      ctx.fillStyle = darkGradient;
+      ctx.fillStyle = dark;
       ctx.fill();
     }
 
     drawWheel();
 
-    // Farbe aus Pixel lesen
     function getColorAt(x, y) {
-      const pixel = ctx.getImageData(x, y, 1, 1).data;
-      return {
-        r: pixel[0],
-        g: pixel[1],
-        b: pixel[2]
-      };
+      const p = ctx.getImageData(x, y, 1, 1).data;
+      return { r: p[0], g: p[1], b: p[2] };
     }
 
     function toHex(r, g, b) {
@@ -127,8 +163,7 @@
     }
 
     function isInsideWheel(x, y) {
-      const dx = x - cx;
-      const dy = y - cy;
+      const dx = x - cx, dy = y - cy;
       return Math.sqrt(dx * dx + dy * dy) <= radius;
     }
 
@@ -136,7 +171,6 @@
       const rect = canvas.getBoundingClientRect();
       const x = Math.round(e.clientX - rect.left);
       const y = Math.round(e.clientY - rect.top);
-
       if (!isInsideWheel(x, y)) return;
 
       const color = getColorAt(x, y);
@@ -146,23 +180,18 @@
       preview.style.boxShadow = `0 0 30px ${hex}`;
       colorText.textContent = hex;
       status.textContent = `R:${color.r}  G:${color.g}  B:${color.b}`;
+
+      sendColor(color.r, color.g, color.b);
     }
 
     let isDown = false;
     canvas.addEventListener('mousedown', (e) => { isDown = true; pickColor(e); });
     canvas.addEventListener('mousemove', (e) => { if (isDown) pickColor(e); });
-    canvas.addEventListener('mouseup', () => { isDown = false; });
+    canvas.addEventListener('mouseup',   () => { isDown = false; });
     canvas.addEventListener('click', pickColor);
 
-    // Touch-Support (Handy)
-    canvas.addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      pickColor(e.touches[0]);
-    });
-    canvas.addEventListener('touchmove', (e) => {
-      e.preventDefault();
-      pickColor(e.touches[0]);
-    });
+    canvas.addEventListener('touchstart', (e) => { e.preventDefault(); pickColor(e.touches[0]); });
+    canvas.addEventListener('touchmove',  (e) => { e.preventDefault(); pickColor(e.touches[0]); });
   </script>
 
 </body>
