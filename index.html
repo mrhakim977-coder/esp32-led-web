@@ -64,6 +64,24 @@
       font-size: 0.85rem;
       opacity: 0.5;
     }
+
+    #brightnessWrap {
+      margin-top: 25px;
+      width: 260px;
+      text-align: center;
+    }
+    #brightnessWrap label {
+      font-size: 0.85rem;
+      opacity: 0.7;
+      letter-spacing: 1px;
+    }
+    #brightness {
+      width: 100%;
+      margin-top: 10px;
+      accent-color: #00ff88;
+      cursor: pointer;
+      height: 6px;
+    }
   </style>
 </head>
 <body>
@@ -76,6 +94,11 @@
   <div id="preview"></div>
   <div id="colorText">#FFFFFF</div>
   <div id="status">Farbe wählen...</div>
+
+  <div id="brightnessWrap">
+    <label>Helligkeit: <span id="brightnessValue">100</span>%</label>
+    <input type="range" id="brightness" min="0" max="100" value="100">
+  </div>
 
   <script>
     // ── MQTT Konfiguration ──────────────────────────────────────
@@ -121,6 +144,11 @@
     const preview = document.getElementById('preview');
     const colorText = document.getElementById('colorText');
     const status = document.getElementById('status');
+    const brightness = document.getElementById('brightness');
+    const brightnessValue = document.getElementById('brightnessValue');
+
+    // zuletzt gewählte Farbe vom Rad (volle Helligkeit)
+    let rawColor = { r: 255, g: 255, b: 255 };
 
     const size = 300;
     const cx = size / 2;
@@ -167,21 +195,31 @@
       return Math.sqrt(dx * dx + dy * dy) <= radius;
     }
 
+    // Farbe x Helligkeit berechnen, anzeigen und senden
+    function applyColor() {
+      const factor = brightness.value / 100;
+      const r = Math.round(rawColor.r * factor);
+      const g = Math.round(rawColor.g * factor);
+      const b = Math.round(rawColor.b * factor);
+      const hex = toHex(r, g, b);
+
+      preview.style.background = hex;
+      preview.style.boxShadow = `0 0 30px ${hex}`;
+      colorText.textContent = hex;
+      status.textContent = `R:${r}  G:${g}  B:${b}`;
+      brightnessValue.textContent = brightness.value;
+
+      sendColor(r, g, b);
+    }
+
     function pickColor(e) {
       const rect = canvas.getBoundingClientRect();
       const x = Math.round(e.clientX - rect.left);
       const y = Math.round(e.clientY - rect.top);
       if (!isInsideWheel(x, y)) return;
 
-      const color = getColorAt(x, y);
-      const hex = toHex(color.r, color.g, color.b);
-
-      preview.style.background = hex;
-      preview.style.boxShadow = `0 0 30px ${hex}`;
-      colorText.textContent = hex;
-      status.textContent = `R:${color.r}  G:${color.g}  B:${color.b}`;
-
-      sendColor(color.r, color.g, color.b);
+      rawColor = getColorAt(x, y);
+      applyColor();
     }
 
     let isDown = false;
@@ -192,6 +230,9 @@
 
     canvas.addEventListener('touchstart', (e) => { e.preventDefault(); pickColor(e.touches[0]); });
     canvas.addEventListener('touchmove',  (e) => { e.preventDefault(); pickColor(e.touches[0]); });
+
+    // Helligkeit ändern -> neu berechnen und senden
+    brightness.addEventListener('input', applyColor);
   </script>
 
 </body>
