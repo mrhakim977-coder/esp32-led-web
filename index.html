@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ESP32 LED Steuerung</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #1a1a2e;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      font-family: Arial, sans-serif;
+      color: white;
+    }
+
+    h1 {
+      margin-bottom: 30px;
+      font-size: 1.5rem;
+      letter-spacing: 2px;
+      opacity: 0.8;
+    }
+
+    #colorWheel {
+      cursor: crosshair;
+      border-radius: 50%;
+      box-shadow: 0 0 40px rgba(255,255,255,0.1);
+    }
+
+    #preview {
+      margin-top: 30px;
+      width: 100px;
+      height: 100px;
+      border-radius: 50%;
+      background: #ffffff;
+      box-shadow: 0 0 30px currentColor;
+      transition: background 0.2s;
+      border: 3px solid rgba(255,255,255,0.2);
+    }
+
+    #colorText {
+      margin-top: 15px;
+      font-size: 1.1rem;
+      opacity: 0.7;
+      letter-spacing: 1px;
+    }
+
+    #status {
+      margin-top: 20px;
+      font-size: 0.85rem;
+      opacity: 0.5;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>ESP32-C6 LED Farbe</h1>
+
+  <canvas id="colorWheel" width="300" height="300"></canvas>
+
+  <div id="preview"></div>
+  <div id="colorText">#FFFFFF</div>
+  <div id="status">Farbe wählen...</div>
+
+  <script>
+    const canvas = document.getElementById('colorWheel');
+    const ctx = canvas.getContext('2d');
+    const preview = document.getElementById('preview');
+    const colorText = document.getElementById('colorText');
+    const status = document.getElementById('status');
+
+    const size = 300;
+    const cx = size / 2;
+    const cy = size / 2;
+    const radius = size / 2 - 5;
+
+    // Farbrad zeichnen
+    function drawWheel() {
+      for (let angle = 0; angle < 360; angle++) {
+        const startAngle = (angle - 1) * Math.PI / 180;
+        const endAngle = (angle + 1) * Math.PI / 180;
+
+        for (let r = 0; r < radius; r++) {
+          const saturation = r / radius * 100;
+          const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+          gradient.addColorStop(0, `hsl(${angle}, 0%, 100%)`);
+          gradient.addColorStop(1, `hsl(${angle}, 100%, 50%)`);
+
+          ctx.beginPath();
+          ctx.moveTo(cx, cy);
+          ctx.arc(cx, cy, radius, startAngle, endAngle);
+          ctx.closePath();
+          ctx.fillStyle = gradient;
+          ctx.fill();
+        }
+      }
+
+      // Schwarzer Rand innen für Dunkelheit
+      const darkGradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+      darkGradient.addColorStop(0, 'rgba(0,0,0,0)');
+      darkGradient.addColorStop(0.7, 'rgba(0,0,0,0)');
+      darkGradient.addColorStop(1, 'rgba(0,0,0,0.3)');
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.fillStyle = darkGradient;
+      ctx.fill();
+    }
+
+    drawWheel();
+
+    // Farbe aus Pixel lesen
+    function getColorAt(x, y) {
+      const pixel = ctx.getImageData(x, y, 1, 1).data;
+      return {
+        r: pixel[0],
+        g: pixel[1],
+        b: pixel[2]
+      };
+    }
+
+    function toHex(r, g, b) {
+      return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase();
+    }
+
+    function isInsideWheel(x, y) {
+      const dx = x - cx;
+      const dy = y - cy;
+      return Math.sqrt(dx * dx + dy * dy) <= radius;
+    }
+
+    function pickColor(e) {
+      const rect = canvas.getBoundingClientRect();
+      const x = Math.round(e.clientX - rect.left);
+      const y = Math.round(e.clientY - rect.top);
+
+      if (!isInsideWheel(x, y)) return;
+
+      const color = getColorAt(x, y);
+      const hex = toHex(color.r, color.g, color.b);
+
+      preview.style.background = hex;
+      preview.style.boxShadow = `0 0 30px ${hex}`;
+      colorText.textContent = hex;
+      status.textContent = `R:${color.r}  G:${color.g}  B:${color.b}`;
+    }
+
+    let isDown = false;
+    canvas.addEventListener('mousedown', (e) => { isDown = true; pickColor(e); });
+    canvas.addEventListener('mousemove', (e) => { if (isDown) pickColor(e); });
+    canvas.addEventListener('mouseup', () => { isDown = false; });
+    canvas.addEventListener('click', pickColor);
+
+    // Touch-Support (Handy)
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      pickColor(e.touches[0]);
+    });
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      pickColor(e.touches[0]);
+    });
+  </script>
+
+</body>
+</html>
