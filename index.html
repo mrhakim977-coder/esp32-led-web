@@ -1,4 +1,23 @@
 <!DOCTYPE html>
+<!--
+  ============================================================================
+   ESP32-C6  Web-LED Steuerung  -  Frontend (Website)
+  ----------------------------------------------------------------------------
+   Zweck : Über ein Farbrad + Helligkeits-Regler die RGB-LED des ESP32 steuern.
+   Autor : Ehsan Hakimi
+   Datum : Juni 2026
+   Hosting: GitHub Pages (https://mrhakim977-coder.github.io/esp32-led-web)
+
+   FUNKTION:
+     1. Verbindet sich per WebSocket (wss) mit dem HiveMQ-Broker.
+     2. Beim Tippen auf das Farbrad wird die Farbe unter dem Cursor gelesen.
+     3. Farbe wird mit der Helligkeit multipliziert (0-100 %).
+     4. Ergebnis wird als JSON {"r":..,"g":..,"b":..} an das Topic gesendet.
+        -> Der ESP32 hört auf dasselbe Topic und setzt die LED.
+
+   Hinweis: Die einzige externe Bibliothek ist MQTT.js (per <script> geladen).
+  ============================================================================
+-->
 <html lang="de">
 <head>
   <meta charset="UTF-8">
@@ -86,11 +105,14 @@
 </head>
 <body>
 
+  <!-- Überschrift + Verbindungs-Status (grün = mit HiveMQ verbunden) -->
   <h1>ESP32-C6 LED Farbe</h1>
   <div id="mqttStatus">Verbinde...</div>
 
+  <!-- Das Farbrad (wird per JavaScript gezeichnet) -->
   <canvas id="colorWheel" width="300" height="300"></canvas>
 
+  <!-- Vorschau-Kreis + Text-Anzeige der aktuellen Farbe -->
   <div id="preview"></div>
   <div id="colorText">#FFFFFF</div>
   <div id="status">Farbe wählen...</div>
@@ -103,10 +125,11 @@
   <script>
     // ── MQTT Konfiguration ──────────────────────────────────────
     const BROKER   = "48aa8a4f70f047eabee7041f11e22ee8.s1.eu.hivemq.cloud";
-    const PORT     = 8884;
+    const PORT     = 8884;   // WICHTIG: Browser nutzt WebSocket-Port 8884
+                             // (der ESP32 nutzt dagegen 8883). NICHT verwechseln!
     const USER     = "esp32";
     const PASS     = "Esp32Haupt!";
-    const TOPIC    = "esp32/led/color";
+    const TOPIC    = "esp32/led/color";   // muss mit der Firmware übereinstimmen
     // ────────────────────────────────────────────────────────────
 
     const mqttStatus = document.getElementById('mqttStatus');
@@ -155,6 +178,8 @@
     const cy = size / 2;
     const radius = size / 2 - 5;
 
+    // Zeichnet das Farbrad: für jeden Winkel (0-359 Grad) ein dünnes
+    // Tortenstück, von Weiss (Mitte) nach voller Farbe (Rand).
     function drawWheel() {
       for (let angle = 0; angle < 360; angle++) {
         const startAngle = (angle - 1) * Math.PI / 180;
